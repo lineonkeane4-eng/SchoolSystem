@@ -1,0 +1,2 @@
+# SchoolSystem
+LUCT Report
