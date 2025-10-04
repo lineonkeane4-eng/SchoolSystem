@@ -1,0 +1,562 @@
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../AuthContext';
+import { Link, useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap-icons/font/bootstrap-icons.css';
+
+function AdminDashboard() {
+  const { user, logout } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [faculties, setFaculties] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedFaculty, setSelectedFaculty] = useState('');
+  const [courseForm, setCourseForm] = useState({ name: '', code: '' });
+  const [userForm, setUserForm] = useState({ full_name: '', email: '', password: '', role: '' });
+  const [editFaculty, setEditFaculty] = useState(null);
+  const [editCourse, setEditCourse] = useState(null);
+  const [editUser, setEditUser] = useState(null);
+  const [message, setMessage] = useState('');
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    if (!user || !['PL', 'PRL'].includes(user.role)) {
+      navigate('/unauthorized');
+      return;
+    }
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    if (user.role === 'PL') {
+      const fetchData = async () => {
+        try {
+          const [facultyRes, courseRes, userRes] = await Promise.all([
+            fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/faculties`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+            fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/courses`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+            fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/admin/users`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          ]);
+
+          if ([facultyRes, courseRes, userRes].some(res => res.status === 401 || res.status === 403)) {
+            localStorage.removeItem('token');
+            navigate('/login');
+            return;
+          }
+
+          const facultyData = await facultyRes.json();
+          const courseData = await courseRes.json();
+          const userData = await userRes.json();
+
+          setFaculties(Array.isArray(facultyData) ? facultyData : []);
+          setCourses(Array.isArray(courseData) ? courseData : []);
+          setUsers(Array.isArray(userData) ? userData : []);
+        } catch (err) {
+          setMessage('An error occurred while fetching data');
+        }
+      };
+
+      fetchData();
+    }
+  }, [user, token, navigate]);
+
+  const handleFacultySubmit = async (e) => {
+    e.preventDefault();
+    setMessage('');
+    const method = editFaculty ? 'PUT' : 'POST';
+    const url = editFaculty
+      ? `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/faculties/${editFaculty.id}`
+      : `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/faculties`;
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: editFaculty ? editFaculty.name : document.getElementById('facultyName').value }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage(`Faculty ${editFaculty ? 'updated' : 'created'} successfully!`);
+        setEditFaculty(null);
+        const facultyRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/faculties`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const facultyData = await facultyRes.json();
+        setFaculties(Array.isArray(facultyData) ? facultyData : []);
+      } else {
+        setMessage(data.error || `Failed to ${editFaculty ? 'update' : 'create'} faculty`);
+      }
+    } catch {
+      setMessage('An error occurred');
+    }
+  };
+
+  const handleCourseSubmit = async (e) => {
+    e.preventDefault();
+    setMessage('');
+    if (!courseForm.name || !selectedFaculty) {
+      setMessage('Course name and faculty are required');
+      return;
+    }
+    if (courseForm.code && courseForm.code.length > 10) {
+      setMessage('Course code must be 10 characters or less');
+      return;
+    }
+    const method = editCourse ? 'PUT' : 'POST';
+    const url = editCourse
+      ? `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/courses/${editCourse.id}`
+      : `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/courses`;
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: courseForm.name,
+          faculty_id: parseInt(selectedFaculty),
+          code: courseForm.code || null,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage(`Course ${editCourse ? 'updated' : 'created'} successfully!`);
+        setCourseForm({ name: '', code: '' });
+        setSelectedFaculty('');
+        const courseRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/courses`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const courseData = await courseRes.json();
+        setCourses(Array.isArray(courseData) ? courseData : []);
+      } else {
+        setMessage(data.error || `Failed to ${editCourse ? 'update' : 'create'} course`);
+      }
+    } catch {
+      setMessage('An error occurred');
+    }
+  };
+
+  const handleUserSubmit = async (e) => {
+    e.preventDefault();
+    setMessage('');
+    if (!userForm.full_name || !userForm.email || !userForm.password || !userForm.role) {
+      setMessage('All user fields are required');
+      return;
+    }
+    const method = editUser ? 'PUT' : 'POST';
+    const url = editUser
+      ? `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/users/${editUser.id}`
+      : `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/admin/users`;
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userForm),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage(`User ${editUser ? 'updated' : 'created'} successfully!`);
+        setUserForm({ full_name: '', email: '', password: '', role: '' });
+        setEditUser(null);
+        const userRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const userData = await userRes.json();
+        setUsers(Array.isArray(userData) ? userData : []);
+      } else {
+        setMessage(data.error || `Failed to ${editUser ? 'update' : 'create'} user`);
+      }
+    } catch {
+      setMessage('An error occurred');
+    }
+  };
+
+  const handleDelete = async (type, id) => {
+    setMessage('');
+    const url = `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/${type}/${id}`;
+    try {
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage(`${type.slice(0, -1)} deleted successfully!`);
+        if (type === 'faculties') {
+          setFaculties(faculties.filter(f => f.id !== id));
+        } else if (type === 'courses') {
+          setCourses(courses.filter(c => c.id !== id));
+        } else if (type === 'users') {
+          setUsers(users.filter(u => u.id !== id));
+        }
+      } else {
+        setMessage(data.error || `Failed to delete ${type.slice(0, -1)}`);
+      }
+    } catch {
+      setMessage('An error occurred');
+    }
+  };
+
+  return (
+    <div>
+      {/* Top Menu */}
+      <nav className="navbar navbar-expand-lg navbar-light bg-light">
+        <div className="container-fluid">
+          <a className="navbar-brand" href="#">{user.role === 'PL' ? 'PL Dashboard' : 'PRL Dashboard'}</a>
+          <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span className="navbar-toggler-icon"></span>
+          </button>
+          <div className="collapse navbar-collapse" id="navbarNav">
+            <ul className="navbar-nav me-auto">
+              {user.role === 'PL' && (
+                <>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/dashboard"><i className="bi bi-house-door"></i> Home</Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/faculties"><i className="bi bi-building"></i> Faculties</Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/courses"><i className="bi bi-book"></i> Courses</Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/users"><i className="bi bi-people"></i> Users</Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/reports"><i className="bi bi-bar-chart"></i> Reports</Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/admin/lecturer-courses"><i className="bi bi-person-check"></i> Assign Lecturers</Link>
+                  </li>
+                </>
+              )}
+              {user.role === 'PRL' && (
+                <>
+                  <li className="nav-item">
+                    <Link className="nav-link" to="/prl/reports"><i className="bi bi-file-earmark-text"></i> Lecture Reports</Link>
+                  </li>
+                </>
+              )}
+            </ul>
+            <button
+              className="btn btn-outline-danger"
+              onClick={() => { logout(); navigate('/login'); }}
+              aria-label="Logout"
+            >
+              Logout <i className="bi bi-box-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Dashboard Content */}
+      <div className="container mt-4">
+        <h1 className="mb-4"><i className="bi bi-gear"></i> {user.role === 'PL' ? 'Program Leader Dashboard' : 'PRL Dashboard'}</h1>
+        {message && (
+          <div className={`alert ${message.includes('success') ? 'alert-success' : 'alert-danger'}`} role="alert">
+            {message}
+          </div>
+        )}
+
+        {user.role === 'PL' ? (
+          <>
+            {/* Faculties Section */}
+            <div className="card shadow-sm mb-4">
+              <div className="card-body">
+                <h2 className="card-title"><i className="bi bi-building"></i> Manage Faculties</h2>
+                <form onSubmit={handleFacultySubmit}>
+                  <div className="mb-3">
+                    <label htmlFor="facultyName" className="form-label">Faculty Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="facultyName"
+                      value={editFaculty ? editFaculty.name : ''}
+                      onChange={(e) => setEditFaculty(editFaculty ? { ...editFaculty, name: e.target.value } : null)}
+                      required
+                      maxLength="100"
+                      aria-describedby="facultyHelp"
+                    />
+                    <div id="facultyHelp" className="form-text">Enter the faculty name (max 100 characters).</div>
+                  </div>
+                  <button type="submit" className="btn btn-primary me-2">
+                    {editFaculty ? 'Update Faculty' : 'Add Faculty'}
+                  </button>
+                  {editFaculty && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setEditFaculty(null)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </form>
+                <h3 className="mt-4">Faculties</h3>
+                {faculties.length > 0 ? (
+                  <ul className="list-group">
+                    {faculties.map(faculty => (
+                      <li key={faculty.id} className="list-group-item d-flex justify-content-between align-items-center">
+                        {faculty.name}
+                        <div>
+                          <button
+                            className="btn btn-sm btn-warning me-2"
+                            onClick={() => setEditFaculty(faculty)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDelete('faculties', faculty.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted">No faculties found</p>
+                )}
+              </div>
+            </div>
+
+            {/* Courses Section */}
+            <div className="card shadow-sm mb-4">
+              <div className="card-body">
+                <h2 className="card-title"><i className="bi bi-book"></i> Manage Courses</h2>
+                <form onSubmit={handleCourseSubmit}>
+                  <div className="mb-3">
+                    <label htmlFor="facultySelect" className="form-label">Select Faculty</label>
+                    <select
+                      className="form-select"
+                      id="facultySelect"
+                      value={selectedFaculty}
+                      onChange={(e) => setSelectedFaculty(e.target.value)}
+                      required
+                      aria-describedby="facultySelectHelp"
+                    >
+                      <option value="">-- Select Faculty --</option>
+                      {faculties.map(faculty => (
+                        <option key={faculty.id} value={faculty.id}>{faculty.name}</option>
+                      ))}
+                    </select>
+                    <div id="facultySelectHelp" className="form-text">Choose a faculty for the course.</div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="courseName" className="form-label">Course Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="courseName"
+                      value={courseForm.name}
+                      onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })}
+                      required
+                      maxLength="100"
+                      aria-describedby="courseNameHelp"
+                    />
+                    <div id="courseNameHelp" className="form-text">Enter the course name (max 100 characters).</div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="courseCode" className="form-label">Course Code (Optional)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="courseCode"
+                      value={courseForm.code}
+                      onChange={(e) => setCourseForm({ ...courseForm, code: e.target.value })}
+                      maxLength="10"
+                      aria-describedby="courseCodeHelp"
+                    />
+                    <div id="courseCodeHelp" className="form-text">Enter the course code (max 10 characters).</div>
+                  </div>
+                  <button type="submit" className="btn btn-primary me-2">
+                    {editCourse ? 'Update Course' : 'Add Course'}
+                  </button>
+                  {editCourse && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setEditCourse(null);
+                        setCourseForm({ name: '', code: '' });
+                        setSelectedFaculty('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </form>
+                <h3 className="mt-4">Courses</h3>
+                {courses.length > 0 ? (
+                  <ul className="list-group">
+                    {courses.map(course => (
+                      <li key={course.id} className="list-group-item d-flex justify-content-between align-items-center">
+                        {course.name} ({course.facultyName}) {course.code && <span>- {course.code}</span>} - {course.total_registered_students} students
+                        <div>
+                          <button
+                            className="btn btn-sm btn-warning me-2"
+                            onClick={() => {
+                              setEditCourse(course);
+                              setCourseForm({ name: course.name, code: course.code || '' });
+                              setSelectedFaculty(course.faculty_id);
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDelete('courses', course.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted">No courses found</p>
+                )}
+              </div>
+            </div>
+
+            {/* Users Section */}
+            <div className="card shadow-sm">
+              <div className="card-body">
+                <h2 className="card-title"><i className="bi bi-person"></i> Manage Users</h2>
+                <form onSubmit={handleUserSubmit}>
+                  <div className="mb-3">
+                    <label htmlFor="userFullName" className="form-label">Full Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="userFullName"
+                      value={userForm.full_name}
+                      onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })}
+                      required
+                      maxLength="100"
+                      aria-describedby="userFullNameHelp"
+                    />
+                    <div id="userFullNameHelp" className="form-text">Enter the user's full name.</div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="userEmail" className="form-label">Email</label>
+                    <input
+                      type="email"
+                      className="form-control"
+                      id="userEmail"
+                      value={userForm.email}
+                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                      required
+                      aria-describedby="userEmailHelp"
+                    />
+                    <div id="userEmailHelp" className="form-text">Enter the user's email.</div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="userPassword" className="form-label">Password</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      id="userPassword"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                      required={!editUser}
+                      aria-describedby="userPasswordHelp"
+                    />
+                    <div id="userPasswordHelp" className="form-text">Password must be at least 8 characters with uppercase, lowercase, number, and special character.</div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="userRole" className="form-label">Role</label>
+                    <select
+                      className="form-select"
+                      id="userRole"
+                      value={userForm.role}
+                      onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                      required
+                      aria-describedby="userRoleHelp"
+                    >
+                      <option value="">-- Select Role --</option>
+                      <option value="PL">PL</option>
+                      <option value="PRL">PRL</option>
+                      <option value="Lecturer">Lecturer</option>
+                      <option value="Student">Student</option>
+                    </select>
+                    <div id="userRoleHelp" className="form-text">Choose the user's role.</div>
+                  </div>
+                  <button type="submit" className="btn btn-primary me-2">
+                    {editUser ? 'Update User' : 'Add User'}
+                  </button>
+                  {editUser && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setEditUser(null);
+                        setUserForm({ full_name: '', email: '', password: '', role: '' });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </form>
+                <h3 className="mt-4">Users</h3>
+                {users.length > 0 ? (
+                  <ul className="list-group">
+                    {users.map(user => (
+                      <li key={user.id} className="list-group-item d-flex justify-content-between align-items-center">
+                        {user.full_name} ({user.email}) - {user.role}
+                        <div>
+                          <button
+                            className="btn btn-sm btn-warning me-2"
+                            onClick={() => {
+                              setEditUser(user);
+                              setUserForm({ full_name: user.full_name, email: user.email, password: '', role: user.role });
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDelete('users', user.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted">No users found</p>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <h2 className="card-title"><i className="bi bi-file-earmark-text"></i> PRL Dashboard</h2>
+              <p>Welcome, {user.fullName}. Use the navigation bar to manage lecture reports.</p>
+              <Link to="/prl/reports" className="btn btn-primary">
+                <i className="bi bi-file-earmark-text"></i> View Lecture Reports
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default AdminDashboard;
