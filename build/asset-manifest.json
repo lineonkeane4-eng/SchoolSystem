@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/SchoolSystem/luct-reporting-system/static/css/main.7b5818b1.css",
+    "main.js": "/SchoolSystem/luct-reporting-system/static/js/main.e0931e52.js",
+    "static/js/453.e3c196b8.chunk.js": "/SchoolSystem/luct-reporting-system/static/js/453.e3c196b8.chunk.js",
+    "static/media/bootstrap-icons.woff?": "/SchoolSystem/luct-reporting-system/static/media/bootstrap-icons.1295669cd4e305c97f2c.woff",
+    "static/media/bootstrap-icons.woff2?": "/SchoolSystem/luct-reporting-system/static/media/bootstrap-icons.92ea18a81d737146ff04.woff2",
+    "index.html": "/SchoolSystem/luct-reporting-system/index.html",
+    "main.7b5818b1.css.map": "/SchoolSystem/luct-reporting-system/static/css/main.7b5818b1.css.map",
+    "main.e0931e52.js.map": "/SchoolSystem/luct-reporting-system/static/js/main.e0931e52.js.map",
+    "453.e3c196b8.chunk.js.map": "/SchoolSystem/luct-reporting-system/static/js/453.e3c196b8.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.7b5818b1.css",
+    "static/js/main.e0931e52.js"
+  ]
+}

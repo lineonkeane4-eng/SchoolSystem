@@ -1,0 +1,276 @@
+// LecturerDashboard.js
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap-icons/font/bootstrap-icons.css';
+
+function LecturerDashboard() {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchCourses = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found. Please log in again.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:4000'}/lecturer/courses`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to load courses');
+        }
+
+        const data = await response.json();
+
+        // Ensure data is always an array and sanitize each course
+        const sanitizedCourses = Array.isArray(data)
+          ? data.map(course => ({
+              id: course.id || null,
+              name: course.name || 'Unnamed Course',
+              facultyName: course.facultyName || 'No Faculty',
+              totalGraded: typeof course.totalGraded === 'number' ? course.totalGraded : 0,
+            }))
+          : [];
+
+        setCourses(sanitizedCourses);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching lecturer courses:', err);
+        setError(err.message || 'An unexpected error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCourses();
+  }, []);
+
+  const totalGraded = courses.reduce((sum, course) => sum + course.totalGraded, 0);
+
+  if (loading) {
+    return (
+      <div className="container mt-4">
+        <h2><i className="bi bi-person-workspace"></i> Lecturer Dashboard</h2>
+        <div className="text-center mt-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="mt-2">Loading your courses...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mt-4">
+        <h2><i className="bi bi-person-workspace"></i> Lecturer Dashboard</h2>
+        <div className="alert alert-danger mt-4" role="alert">
+          <i className="bi bi-exclamation-triangle me-2"></i>
+          {error}
+        </div>
+        <button className="btn btn-outline-primary" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mt-4">
+      <h2 className="mb-4">
+        <i className="bi bi-person-workspace"></i> Lecturer Dashboard
+      </h2>
+
+      <div className="card mb-4 shadow-sm">
+        <div className="card-body">
+          <h5 className="card-title">Course Overview</h5>
+          {courses.length > 0 ? (
+            <ul className="list-group">
+              {courses.map(course => (
+                <li
+                  key={course.id || `course-${course.name}`}
+                  className="list-group-item d-flex justify-content-between align-items-center"
+                >
+                  <div>
+                    <strong>{course.name}</strong>
+                    {course.facultyName && (
+                      <small className="d-block text-muted">Faculty: {course.facultyName}</small>
+                    )}
+                  </div>
+                  <button
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={() => navigate(`/lecturer/courses/${course.id}/grades`)}
+                    disabled={!course.id}
+                  >
+                    View Grades
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted">No courses assigned to you.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="card shadow-sm">
+        <div className="card-body">
+          <h5 className="card-title">Grade Summary</h5>
+          <p className="mb-1">
+            <strong>Total graded students:</strong> {totalGraded}
+          </p>
+          <small className="text-muted">
+            This counts all students in your courses who have received a grade.
+          </small>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default LecturerDashboard;
+
+
+
+
+
+
+///
+app.get('/student/classes', authenticateToken, async (req, res) => {
+  const connection = await mysql.createConnection(dbConfig);
+  try {
+    if (req.user.role !== 'Student') {
+      await logAction(connection, req.user?.id, 'Unauthorized Access', 'Non-Student accessed /student/classes');
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const [enrolledClass] = await connection.execute(
+      `SELECT class_id FROM student_classes WHERE student_id = ?`,
+      [req.user.id]
+    );
+    if (enrolledClass.length > 0) {
+      const [classes] = await connection.execute(
+        `SELECT c.id, c.name AS class_name,
+                GROUP_CONCAT(co.id) AS course_ids,
+                GROUP_CONCAT(co.name) AS course_names
+         FROM classes c
+         LEFT JOIN class_courses cc ON c.id = cc.class_id
+         LEFT JOIN courses co ON cc.course_id = co.id
+         WHERE c.id = ?
+         GROUP BY c.id, c.name`,
+        [enrolledClass[0].class_id]
+      );
+      const formattedClasses = classes.map(cls => ({
+        ...cls,
+        course_ids: cls.course_ids ? cls.course_ids.split(',').map(Number) : [],
+        course_names: cls.course_names ? cls.course_names.split(',') : []
+      }));
+      await logAction(connection, req.user.id, 'Fetch Classes', `Fetched enrolled class ${enrolledClass[0].class_id} for user ${req.user.id}`);
+      res.json(formattedClasses);
+    } else {
+      const faculty_id = req.query.faculty_id ? parseInt(req.query.faculty_id) : null;
+      if (!faculty_id) {
+        await logAction(connection, req.user.id, 'Fetch Classes Failed', 'Missing faculty_id');
+        return res.status(400).json({ error: 'Faculty ID is required' });
+      }
+      const [classes] = await connection.execute(
+        `SELECT c.id, c.name AS class_name,
+                GROUP_CONCAT(co.id) AS course_ids,
+                GROUP_CONCAT(co.name) AS course_names
+         FROM classes c
+         LEFT JOIN class_courses cc ON c.id = cc.class_id
+         LEFT JOIN courses co ON cc.course_id = co.id
+         WHERE co.faculty_id = ?
+         GROUP BY c.id, c.name`,
+        [faculty_id]
+      );
+      const formattedClasses = classes.map(cls => ({
+        ...cls,
+        course_ids: cls.course_ids ? cls.course_ids.split(',').map(Number) : [],
+        course_names: cls.course_names ? cls.course_names.split(',') : []
+      }));
+      await logAction(connection, req.user.id, 'Fetch Classes', `Fetched ${formattedClasses.length} classes for faculty ${faculty_id}`);
+      res.json(formattedClasses);
+    }
+  } catch (err) {
+    await logAction(connection, req.user?.id, 'Fetch Classes Error', err.message);
+    res.status(500).json({ error: 'Failed to fetch classes', details: err.message });
+  } finally {
+    await connection.end();
+  }
+});
+
+also the other one student/course-lecturer
+app.get('/student/course-lecturers', authenticateToken, async (req, res) => {
+  const connection = await mysql.createConnection(dbConfig);
+  try {
+    if (req.user.role !== 'Student') {
+      await logAction(connection, req.user?.id, 'Unauthorized Access', 'Non-Student accessed /student/course-lecturers');
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const course_id = req.query.course_id ? parseInt(req.query.course_id) : null;
+    if (!course_id) {
+      await logAction(connection, req.user.id, 'Fetch Lecturers Failed', 'Missing course_id');
+      return res.status(400).json({ error: 'Course ID is required' });
+    }
+    // Verify student is enrolled in the course
+    const [enrollment] = await connection.execute(
+      `SELECT student_id FROM enrollments WHERE student_id = ? AND course_id = ?`,
+      [req.user.id, course_id]
+    );
+    if (enrollment.length === 0) {
+      await logAction(connection, req.user.id, 'Fetch Lecturers Failed', `Not enrolled in course: ${course_id}`);
+      return res.status(403).json({ error: 'You are not enrolled in this course' });
+    }
+    // Get the student's enrolled class
+    const [studentClass] = await connection.execute(
+      `SELECT class_id FROM student_classes WHERE student_id = ?`,
+      [req.user.id]
+    );
+    if (studentClass.length === 0) {
+      await logAction(connection, req.user.id, 'Fetch Lecturers Failed', 'Student not enrolled in any class');
+      return res.status(403).json({ error: 'You must be enrolled in a class to view lecturers' });
+    }
+    const class_id = studentClass[0].class_id;
+    // Verify the course is part of the enrolled class
+    const [classCourse] = await connection.execute(
+      `SELECT course_id FROM class_courses WHERE class_id = ? AND course_id = ?`,
+      [class_id, course_id]
+    );
+    if (classCourse.length === 0) {
+      await logAction(connection, req.user.id, 'Fetch Lecturers Failed', `Course ${course_id} not associated with class ${class_id}`);
+      return res.status(400).json({ error: 'Course is not associated with your enrolled class' });
+    }
+    // Fetch lecturers assigned to the class
+    const [lecturers] = await connection.execute(
+      `SELECT DISTINCT u.id, u.full_name
+       FROM users u
+       JOIN lecturer_classes lc ON u.id = lc.lecturer_id
+       WHERE lc.class_id = ? AND u.role = 'Lecturer'`,
+      [class_id]
+    );
+    if (lecturers.length === 0) {
+      await logAction(connection, req.user.id, 'Fetch Lecturers Failed', `No lecturers found for class ${class_id}`);
+      return res.status(404).json({ error: 'No lecturers found for this course and class' });
+    }
+    await logAction(connection, req.user.id, 'Fetch Lecturers', `Fetched ${lecturers.length} lecturers for course ${course_id} in class ${class_id}`);
+    res.json(lecturers);
+  } catch (err) {
+    await logAction(connection, req.user?.id, 'Fetch Lecturers Error', err.message);
+    res.status(500).json({ error: 'Failed to fetch lecturers', details: err.message });
+  } finally {
+    await connection.end();
+  }
+});
