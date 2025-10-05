@@ -1,0 +1,283 @@
+```javascript
+// LecturerMonitoring.js
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+
+const LecturerMonitoring = () => {
+  const [classes, setClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [students, setStudents] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [selectedReport, setSelectedReport] = useState('');
+  const [attendance, setAttendance] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:4000';
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        // Fetch lecturer's assigned classes
+        const classesResponse = await fetch(`${apiUrl}/lecturer/class-reports`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (classesResponse.status === 401) {
+          localStorage.removeItem('token');
+          navigate('/login');
+          return;
+        }
+        if (!classesResponse.ok) throw new Error('Failed to fetch classes');
+        const reportsData = await classesResponse.json();
+        const uniqueClasses = [...new Set(reportsData.map(r => r.class_id))].map(id => ({
+          id,
+          name: reportsData.find(r => r.class_id === id).class_name
+        }));
+        setClasses(uniqueClasses);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [navigate]);
+
+  const handleClassChange = async (e) => {
+    const classId = e.target.value;
+    setSelectedClass(classId);
+    setSelectedReport('');
+    setAttendance([]);
+    if (!classId) {
+      setStudents([]);
+      setReports([]);
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    try {
+      setLoading(true);
+      setError('');
+
+      // Fetch students in the selected class
+      const studentsResponse = await fetch(`${apiUrl}/lecturer/class-students?class_id=${classId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!studentsResponse.ok) throw new Error('Failed to fetch students');
+      const studentsData = await studentsResponse.json();
+      setStudents(studentsData);
+
+      // Fetch reports for the selected class
+      const reportsResponse = await fetch(`${apiUrl}/lecturer/class-reports?class_id=${classId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!reportsResponse.ok) throw new Error('Failed to fetch reports');
+      const reportsData = await reportsResponse.json();
+      setReports(reportsData);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReportChange = async (e) => {
+    const reportId = e.target.value;
+    setSelectedReport(reportId);
+    if (!reportId) {
+      setAttendance([]);
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    try {
+      setLoading(true);
+      setError('');
+
+      // Fetch attendance for the selected report
+      const attendanceResponse = await fetch(`${apiUrl}/lecturer/attendance?report_id=${reportId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!attendanceResponse.ok) throw new Error('Failed to fetch attendance');
+      const attendanceData = await attendanceResponse.json();
+      setAttendance(attendanceData);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAttendanceChange = (studentId, attended) => {
+    setAttendance(prev =>
+      prev.map(item =>
+        item.student_id === studentId ? { ...item, attended } : item
+      )
+    );
+  };
+
+  const handleSubmitAttendance = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      setLoading(true);
+      setError('');
+
+      const response = await fetch(`${apiUrl}/lecturer/submit-attendance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ report_id: selectedReport, attendance }),
+      });
+      if (!response.ok) throw new Error('Failed to submit attendance');
+      alert('Attendance submitted successfully');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="container mt-5">
+      <h2 className="mb-4">Lecturer Monitoring</h2>
+      {error && <div className="alert alert-danger">{error}</div>}
+      {loading && <div className="alert alert-info">Loading...</div>}
+
+      {/* Class Selection */}
+      <div className="mb-4">
+        <label htmlFor="classSelect" className="form-label">Select Class</label>
+        <select
+          id="classSelect"
+          className="form-select"
+          value={selectedClass}
+          onChange={handleClassChange}
+          aria-required="true"
+        >
+          <option value="">-- Select a Class --</option>
+          {classes.map((cls) => (
+            <option key={cls.id} value={cls.id}>
+              {cls.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Class Reports */}
+      {selectedClass && (
+        <div className="card mb-4">
+          <div className="card-header">Class Reports</div>
+          <div className="card-body">
+            {reports.length === 0 && !loading && <p>No reports found.</p>}
+            {reports.length > 0 && (
+              <div className="table-responsive">
+                <table className="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Course</th>
+                      <th>Class</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.map((report) => (
+                      <tr key={report.id}>
+                        <td>{new Date(report.date).toLocaleDateString()}</td>
+                        <td>{report.course_name}</td>
+                        <td>{report.class_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Report Selection for Attendance */}
+      {selectedClass && (
+        <div className="mb-4">
+          <label htmlFor="reportSelect" className="form-label">Select Report</label>
+          <select
+            id="reportSelect"
+            className="form-select"
+            value={selectedReport}
+            onChange={handleReportChange}
+            aria-required="true"
+          >
+            <option value="">-- Select a Report --</option>
+            {reports.map((report) => (
+              <option key={report.id} value={report.id}>
+                {new Date(report.date).toLocaleDateString()} - {report.course_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Student Attendance */}
+      {selectedReport && (
+        <div className="card">
+          <div className="card-header">Student Attendance</div>
+          <div className="card-body">
+            {students.length === 0 && !loading && <p>No students found.</p>}
+            {students.length > 0 && (
+              <div className="table-responsive">
+                <table className="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Email</th>
+                      <th>Attended</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((student) => {
+                      const attendanceRecord = attendance.find(a => a.student_id === student.id) || { attended: false };
+                      return (
+                        <tr key={student.id}>
+                          <td>{student.full_name}</td>
+                          <td>{student.email}</td>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={attendanceRecord.attended}
+                              onChange={(e) => handleAttendanceChange(student.id, e.target.checked)}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <button
+                  className="btn btn-primary mt-3"
+                  onClick={handleSubmitAttendance}
+                  disabled={loading || attendance.length === 0}
+                >
+                  Submit Attendance
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default LecturerMonitoring;
+```
